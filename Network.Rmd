@@ -1,0 +1,420 @@
+---
+title: "Network: Cleaned up Version"
+output: html_notebook
+---
+
+# Load libraries and set directory
+```{r directory}
+library(deSolve)
+library(Matrix)
+library(knitr)
+dir <- "/Users/cmmoore/Documents/WaiteMutCode/RunsOut/"
+#dir <- "/Volumes/GoogleDrive/My Drive/Projects/WaiteProjects/Network"
+# where to save the runs
+save_dir <- dir
+```
+
+# Matrix functions
+These are functions used to create and extract information from coefficient matrices. This is where the matrices that are used in the systems of ODEs are created.
+```{r matrix functions}
+
+# creates a random coefficient matrix with a given number of species
+generate_coef_mat <- function(n_spp, distribution = "rnorm", disp = 1){
+  if (distribution == "rnorm") {
+    IM_vals <- rnorm(n = n_spp*n_spp, mean = 0, sd = disp)
+  } else if (distribution == "runif") {
+    IM_vals <- runif(n = n_spp*n_spp, min = -disp, max = disp)
+  } else {
+    ### gives an error message instead of a warning (so that it won't try to access IM) 
+    stop("generate_coef_mat must have a distribution of 'rnorm' or 'runif'" )
+  }
+  IM <- matrix(data = IM_vals, nrow = n_spp, ncol = n_spp)
+  return(IM)
+}
+
+# takes a coefficient matrix and returns a list with mutualism indices 
+get_indices <- function(mat){
+  
+  pos_ind <- which(mat > 0)
+  pos_t_ind <- which(t(mat) > 0) 
+  
+  # index values that are positive in both original matrix and transpose
+  mut_ind <- pos_ind[which((pos_ind) %in% (pos_t_ind))]
+  
+  return(mut_ind)
+}
+
+# takes a coefficient matrix and creates a matrix with only mutualisms
+get_mut_mat <- function(mat){
+  # get mutualism indices
+  mut_ind <- get_indices(mat)
+  
+  # Create a blank matrix and fill with only mutualisms
+  mut_mat <- matrix(data = 0, nrow = nrow(mat), ncol = nrow(mat))
+  mut_mat[mut_ind] <- mat[mut_ind]
+  
+  # remove the values on the diagonal (in the previous steps these are counted as mutualisms)
+  diag(mut_mat) <- 0
+  
+  return (mut_mat)
+}
+
+# generates a coefficient matrix that contains at least one mutualistic interaction
+generate_coef_mat2 <- function(n_spp, distribution = "rnorm", disp = 1){
+  # generate a random coefficient matrix
+  mat <- generate_coef_mat(n_spp, distribution, disp)
+  mut_mat <- get_mut_mat(mat)
+  n_mut <- nnzero(mut_mat)
+  while(n_mut == 0){
+    mat <- generate_coef_mat(n_spp, distribution, disp)
+    mut_mat <- get_mut_mat(mat)
+    n_mut <- nnzero(mut_mat)
+  }
+  
+  diag(mat) <- 0
+  return(mat)
+}
+
+# takes a coefficient matrix and returns a matrix with only non-mutualism interactions
+get_not_mut_mat <- function(mat){
+  # get indices for mutualism
+  mut_ind <- get_indices(mat)
+  
+  # index values not in the mutualism matrix
+  all_ind <- c(1:nrow(mat)^2)
+  not_mut_ind <- all_ind[which(!(all_ind %in% mut_ind))]
+  
+  # Create a blank matrix and fill with only non-mutualistic interactions
+  not_mut_mat <- matrix(data = 0, nrow = nrow(mat), ncol = nrow(mat))
+  not_mut_mat[not_mut_ind] <- mat[not_mut_ind]
+  
+  # make diagonals 0 (don't want intraspecific effects since we're using K)
+  diag(not_mut_mat) <- 0 
+  
+  return(not_mut_mat)
+}
+```
+
+# Other functions
+These are other functions used in the loop.
+```{r other functions}
+# given desolve output, find out how many species persisted
+get_num_persist <- function(out){
+  num_persist <- 0
+      for (sp in out[nrow(out), 2:ncol(out)]){
+        if(!is.na(sp)){
+          if (sp > 0){
+          num_persist <- num_persist + 1
+        }}}
+  return(num_persist)
+}
+
+# tryCatch error handler for exponential growth
+errorFunc <- function(e){
+  unbounded <- integer(1)
+  return(unbounded)
+}
+
+# run ode solver with tryCatch, return deSolve object if no exp growth, return integer(1) if exp growth
+odeSolve <- function (y, times, func, parms, method, rootfun, events){
+  result <- tryCatch({
+              ode(y = y, times = times, func = func, parms = parms, method = method,
+                  rootfun = rootfun, events = events)
+            }, error = errorFunc)
+  return(result)
+}
+
+# return true if there was exponential growth
+expGrowth <- function(out){
+  if(is.integer(out)){
+    return(TRUE)
+  }
+  return(FALSE)
+}
+
+# count up extinctions and persistances (NA if there was exp growth)
+#returns a list of persistances and extinctions
+sumExtPer <- function(out, expGrowth, n_spp){
+  if (expGrowth){
+    extinct <- NA
+    persist <- NA
+  } else{
+      persist <- get_num_persist(out)
+      extinct <- n_spp - persist
+  }
+  return(list(persist, extinct))
+}
+```
+
+
+# Parameters
+This is where we set parameters (k and r) and specify which community sizes (numbers of species) and dispersal values (range for the interaction matrix values) we want to test. We also set the time sequence to use for the numerical solver.
+```{r parameters and ICs}
+# parameters
+n_spp_vec <- (c(2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987))
+#n_spp_vec <- c(2, 3, 5, 8, 13, 21, 34, 55, 89, 144)
+#n_spp_vec <- c(987)
+#disp_vec <- c(0.001) 
+#disp_vec <- 10^seq(from = -3, to = -1, length.out = 14)
+disp_vec <- 10^seq(from = -3, to = -(1/5), length.out = 10)
+K <- 10
+r <- 0.05
+parms <- list(r, K)
+
+# time sequence
+max_time <- 1000
+time.seq <- seq(from = 0, to = max_time, by = 0.1)
+length_time <- length(time.seq)
+```
+
+# Mutualism models
+These are the two systems of differential equations that model population growth in a community.  
+The ODE solver uses these systems to numerically solve.
+```{r models}
+NumeratorMut <- function(t, n, parms){
+   with(as.list(c(n, parms)), {
+     dns <- r*n*((k - n + mut_mat%*%n + not_mut_mat%*%n)/k)
+    return(list(c(dns)))
+  })
+}
+
+DenominatorMut <- function(t, n, parms){
+  with(as.list(c(n, parms)), {
+    dns <- r*n*((k - n + mut_mat%*%n + not_mut_mat%*%n)/(k + mut_mat%*%n))
+    return(list(c(dns)))
+  })
+}
+
+```
+
+# Events
+Here, we create the events that tell the ODE solver how to handle extinction and exponential growth.  
+Using these events, the solver will set a species density equal to 0 if it is headed towards extinction (<0.001) and it will stop solving and throw an error if any species is headed towards exponential growth (>1000)
+```{r events}
+eps <- 0.01
+## event triggered if state variable <= 0.01 (extinction) or if state variable >= 1000 (unbounded growth)
+rootfun <- function (t, n, parms) {
+  n1 <- rep(NA, length(n))
+  for(i in seq(length(n))){
+    if( n[i] > 10){
+      n1[i] <- n[i]-1000
+    }
+    else{
+      n1[i] <- n[i] - eps
+    }
+  }
+  return(as.vector(n1))
+}
+
+
+## sets state variable = 0 if extinct or stops executing and produces an error if unbounded growth is happening
+eventfun <- function(t, n, parms) {
+  for (i in seq(length(n))){
+    if (n[i] <= eps){
+     n[i] <-0 
+    } 
+    else if (n[i] >= 1000){
+      stop("error: unbounded growth")
+    }
+  }
+  return(as.vector(n))
+}
+```
+
+
+# The Loop
+This is where we run lots of simulations and keep track of the results. ***Note: check the save_dir (in first chunk) BEFORE running
+```{r Loop}
+
+iterations <- 5
+iter_vec <- 1:iterations
+length_n_spp_vec <- length(n_spp_vec)
+length_disp_vec <- length(disp_vec)
+spp_dist_iter_combs <- length_n_spp_vec*length_disp_vec*iterations
+seed_mat <- array(data = 1:spp_dist_iter_combs, dim = c(iterations, length_disp_vec, length_n_spp_vec))
+
+
+run_list <- list()
+start_run <- proc.time()
+for (i in 1:length_n_spp_vec) {
+  for (j in 1:length_disp_vec) {
+    for (k in 1:iterations) {
+      
+      
+      ###################################### store initial info #############################################
+      
+      
+      # set the seed for creation of the interaction matrix (unique seed for each matrix)
+      iter_seed <- seed_mat[k, j, i]
+      #set.seed(iter_seed)
+      
+      # define local variables for number of species, dispersion, iteration number
+      n_spp <- n_spp_vec[i]
+      disp_val <- disp_vec[j]
+      iter <- k
+      
+      # column vector of initial states
+      n0 <- matrix(data = 10, nrow = n_spp, ncol = 1)
+      
+      # make a data frame with the seed, dispersion, number of species, and iteration number
+      pars <- c("seed", "dispersion", "n_spp", "iteration")
+      vals <- c(iter_seed, disp_val, n_spp, iter)
+      init_df <- data.frame(pars, vals)
+      # this data frame is the first item in the output list
+      run_list[[1]] <- init_df
+
+      
+      ############################################# normal ###################################################
+      
+      
+      # make an interaction matrix (norm) that is guaranteed to have mutualism 
+      int_mat_norm <- generate_coef_mat2(n_spp, distribution = "rnorm", disp = disp_val)
+      # separate out mutualism and non-mutualism
+      mut_mat <- get_mut_mat(int_mat_norm)
+      not_mut_mat<- get_not_mut_mat(int_mat_norm)
+      # the normal distribution interaction matrix is the second item in the output list
+      run_list[[2]] <- int_mat_norm
+
+      
+      ########################################### numerator #################################################
+      
+      
+      # run ode solver for numerator model
+      outNum_norm <- odeSolve(y = n0, times = time.seq, func = NumeratorMut, parms = parms, method = "lsoda",
+                              rootfun = rootfun, events = list(func = eventfun, root = TRUE))
+      # check for exponential growth
+      exp_Num_norm <- expGrowth(outNum_norm)
+      # count up extinctions and persistances
+      extPers <- sumExtPer(out = outNum_norm, expGrowth = exp_Num_norm, n_spp = n_spp)
+      sum_Num_persist_norm <- extPers[[1]]
+      sum_Num_extnct_norm <- extPers[[2]]
+      # add time series to output list (NA if unbounded growth)
+      run_list[[3]] <- NA
+      if(!exp_Num_norm) {
+        run_list[[3]] <- outNum_norm}
+
+      
+      ########################################### denominator #################################################
+      
+      
+      # # run ode solver for denominator model
+      outDem_norm <- odeSolve(y = n0, times = time.seq, func = DenominatorMut, parms = parms, method = "lsoda",
+                              rootfun = rootfun, events = list(func = eventfun, root = TRUE))
+      # check for exponential growth
+      exp_Dem_norm <- expGrowth(outDem_norm)
+      # count up extinctions and persistances
+      extPers <- sumExtPer(out = outDem_norm, expGrowth = exp_Dem_norm, n_spp = n_spp)
+      sum_Dem_persist_norm <- extPers[[1]]
+      sum_Dem_extnct_norm <- extPers[[2]]
+      # add time series to output list (NA if unbounded growth)
+      run_list[[4]] <- NA
+      if(!exp_Dem_norm) {
+        run_list[[4]] <- outDem_norm}
+      
+      
+      # store normal results in a vector
+      values_Num_norm <- c("Num", "norm", exp_Num_norm, sum_Num_persist_norm, 
+                           sum_Num_extnct_norm)
+      values_Dem_norm <- c("Dem", "norm", exp_Dem_norm, sum_Dem_persist_norm,
+                           sum_Dem_extnct_norm)
+      
+      
+      ########################################### uniform ##################################################
+      
+      
+      # get an interaction matrix using uniform distribution
+      int_mat_unif <- generate_coef_mat2(n_spp, distribution = "runif", disp = disp_val)
+      # separate out mutualism and non-mutualism
+      mut_mat <- get_mut_mat(int_mat_unif)
+      not_mut_mat<- get_not_mut_mat(int_mat_unif)
+      diag(not_mut_mat) <- 0
+      # item 6 is the interaction matrix for uniform distribution
+      run_list[[5]] <- int_mat_unif
+    
+      
+      ########################################### numerator #################################################
+      
+      
+      # run ode solver for numerator model
+      outNum_unif <- odeSolve(y = n0, times = time.seq, func = NumeratorMut, parms = parms, method = "lsoda",
+                              rootfun = rootfun, events = list(func = eventfun, root = TRUE))
+      # check for exponential growth
+      exp_Num_unif <- expGrowth(outNum_unif)
+      # count up extinctions and persistances
+      extPers <- sumExtPer(out = outNum_unif, expGrowth = exp_Num_unif, n_spp = n_spp)
+      sum_Num_persist_unif <- extPers[[1]]
+      sum_Num_extnct_unif <- extPers[[2]]
+      # add time series to output list (NA if unbounded growth)
+      run_list[[6]] <- NA
+      if(!exp_Num_unif) {
+        run_list[[6]] <- outNum_unif}
+
+      
+      ########################################### denominator #################################################
+      
+      
+      # run ode solver for denominator model
+      outDem_unif <- odeSolve(y = n0, times = time.seq, func = DenominatorMut, parms = parms, method = "lsoda",
+                              rootfun = rootfun, events = list(func = eventfun, root = TRUE))
+      # check for exponential growth
+      exp_Dem_unif <- expGrowth(outDem_unif)
+      # count up extinctions and persistances
+      extPers <- sumExtPer(out = outDem_unif, expGrowth = exp_Dem_unif, n_spp = n_spp)
+      sum_Dem_persist_unif <- extPers[[1]]
+      sum_Dem_extnct_unif <- extPers[[2]]
+      # add time series to output list (NA if unbounded growth)
+      run_list[[7]] <- NA
+      if(!exp_Dem_unif) {
+        run_list[[7]] <- outDem_unif}
+
+
+      # store uniform results in a vector
+      values_Num_unif <- c("Num", "unif", exp_Num_unif, sum_Num_persist_unif,
+                           sum_Num_extnct_unif)
+      values_Dem_unif <- c("Dem", "unif", exp_Dem_unif, sum_Dem_persist_unif,
+                           sum_Dem_extnct_unif)
+
+      
+      ########################################## final results #############################################
+      
+      
+      # build a dataframe for all results
+      out_all_df <- data.frame(rbind(values_Num_norm, values_Dem_norm, values_Num_unif, values_Dem_unif))
+      # colnames(out_all_df) <- c("NumODem", "Distribution", "Exp_growth", "Steps",  "S_persist",
+      #                           "S_extinct")
+      colnames(out_all_df) <- c("NumODem", "Distribution", "Exp_growth", "S_persist",
+                                "S_extinct")
+      # save results dataframe to output list
+      run_list[[8]] <- out_all_df
+      
+      # save all info to a file
+      file_name <- paste0(sprintf(x = n_spp, fmt = "%03d"), "spp_", sprintf(x = abs(log(x = disp_val, base = 10)), fmt = "%.2f"), "disp_", sprintf(x = iter, fmt = "%03d"), "iter")
+      save(x = run_list, file = paste0(save_dir, file_name, ".Rda"))
+      
+    } # end k iteraction
+  }   # end j dispersion value
+}     # end i community size
+end_run <- proc.time()
+end_run-start_run
+```
+
+# Data Compilation
+Here, we compile the data from the runs (run_list[[8]], the dataframe with final results) into one dataframe
+```{r data comp}
+dir <- save_dir
+runs <- list.files(dir)
+
+rdf <- data.frame()
+for (run in runs){
+  dirSave <- paste0(dir, "/", run)
+  load(dirSave)
+  
+  disp_vec <- rep(x = run_list[[1]]$vals[2], times = 4)
+  n_spp_vec <- rep(x = run_list[[1]]$vals[3], times = 4)
+  iter_vec <- rep(x = run_list[[1]]$vals[4], times = 4)
+  
+  run_list_temp <- cbind(run_list[[8]], disp_vec, n_spp_vec, iter_vec)
+  rdf <- rbind(rdf, run_list_temp)
+}
+
+```
