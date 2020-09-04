@@ -1,0 +1,60 @@
+---
+title: "Simulation Data Analysis"
+author: "Taryn Waite"
+date: "9/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# read in the output data from the simulation
+data <- readRDS("outData.RData")
+
+library(tidyverse)
+```
+
+```{r}
+# convert columns to numeric and add a proportion persist column
+data2 <- data %>% 
+  mutate(S_persist = as.numeric(paste(S_persist)), S_extinct = as.numeric(paste(S_extinct)),
+         prop_persist = as.numeric(paste(S_persist))/n_spp_vec,
+         Exp_growth = as.character(Exp_growth) == "TRUE")
+
+# persistance data grouped by model type, #species, dispersion
+persistance_data <- data2 %>% 
+  drop_na() %>% 
+  group_by(NumODem, n_spp_vec, disp_vec) %>% 
+  summarize(mean_prop_persist = mean(prop_persist), na.omit = T)
+
+# exp growth data grouped by model type, #species, dispersion
+exp_growth_data <- data2 %>% 
+  group_by(NumODem, n_spp_vec, disp_vec) %>% 
+  summarize(prop_exp_growth = sum(Exp_growth)/n())
+```
+
+```{r proportion persisted}
+# heatmaps of proportion persisted by number of species and dispersion
+persistance_data %>% 
+  filter(NumODem == "Num") %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), fill = mean_prop_persist)) +
+  geom_tile()
+  
+persistance_data %>% 
+  filter(NumODem == "Dem") %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), fill = mean_prop_persist)) +
+  geom_tile()
+
+```
+
+```{r proportion exponential growth}
+# heatmaps of proportion exp.growth by number of species and dispersion
+exp_growth_data %>% 
+  filter(NumODem == "Num") %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), fill = prop_exp_growth)) +
+  geom_tile()
+  
+exp_growth_data %>% 
+  filter(NumODem == "Dem") %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), fill = prop_exp_growth)) +
+  geom_tile()
+```
+
