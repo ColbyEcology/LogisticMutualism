@@ -14,8 +14,7 @@ library(knitr)
 source("simulation_functions.R")
 
 dir <- "/Users/tarynwaite/Desktop/Mutualism project/LogisticMutualism/RunsOut"
-#dir <- "/Users/cmmoore/Documents/WaiteMutCode/RunsOut/"
-#dir <- "/Volumes/GoogleDrive/My Drive/Projects/WaiteProjects/Network"
+dir <- "/Volumes/GoogleDrive/My Drive/Projects/WaiteProjects/Network"
 
 # where to save the runs
 save_dir <- dir
