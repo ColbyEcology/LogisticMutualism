@@ -26,17 +26,18 @@ This is where we set parameters (k and r) and specify which community sizes (num
 ```{r parameters and ICs}
 # parameters
 #n_spp_vec <- (c(2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987))
-n_spp_vec <- c(2, 3, 5, 8, 13, 21, 34)
+n_spp_vec <- c(55)
 #n_spp_vec <- c(987)
 #disp_vec <- c(0.001) 
 #disp_vec <- 10^seq(from = -3, to = -1, length.out = 14)
-disp_vec <- 10^seq(from = -3, to = -(1/5), length.out = 10)
+disp_vec <- 10^seq(from = -3, to = -(1/5), length.out = 5)
 K <- 10
 r <- 0.05
 parms <- list(r, K)
 
 # time sequence
-max_time <- 1000
+#max_time <- 1000
+max_time <- 500
 time.seq <- seq(from = 0, to = max_time, by = 0.1)
 length_time <- length(time.seq)
 
@@ -102,36 +103,44 @@ for (i in 1:length_n_spp_vec) {
       
       
       # run ode solver for numerator model
-      outNum_norm <- odeSolve(y = n0, times = time.seq, func = NumeratorMut, parms = parms, method = "lsoda",
+      out <- odeSolve(y = n0, times = time.seq, func = NumeratorMut, parms = parms, method = "lsoda",
                               rootfun = rootfun, events = list(func = eventfun, root = TRUE))
+      #outNum_norm <- odeSolve(y = n0, times = time.seq, func = NumeratorMut, parms = parms, method = "lsoda",
+                              #rootfun = rootfun, events = list(func = eventfun, root = TRUE))
       # check for exponential growth
-      exp_Num_norm <- expGrowth(outNum_norm)
+      exp_Num_norm <- expGrowth(out)
+      #exp_Num_norm <- expGrowth(outNum_norm)
       # count up extinctions and persistances
-      extPers <- sumExtPer(out = outNum_norm, expGrowth = exp_Num_norm, n_spp = n_spp)
+      extPers <- sumExtPer(out = out, expGrowth = exp_Num_norm, n_spp = n_spp)
+      #extPers <- sumExtPer(out = outNum_norm, expGrowth = exp_Num_norm, n_spp = n_spp)
       sum_Num_persist_norm <- extPers[[1]]
       sum_Num_extnct_norm <- extPers[[2]]
       # add time series to output list (NA if unbounded growth)
       run_list[[3]] <- NA
-      if(!exp_Num_norm) {
-        run_list[[3]] <- outNum_norm}
+      #if(!exp_Num_norm) {
+        #run_list[[3]] <- outNum_norm}
 
       
       #========== denominator ==========
       
       
       # # run ode solver for denominator model
-      outDem_norm <- odeSolve(y = n0, times = time.seq, func = DenominatorMut, parms = parms, method = "lsoda",
+      out <- odeSolve(y = n0, times = time.seq, func = DenominatorMut, parms = parms, method = "lsoda",
                               rootfun = rootfun, events = list(func = eventfun, root = TRUE))
+      #outDem_norm <- odeSolve(y = n0, times = time.seq, func = DenominatorMut, parms = parms, method = "lsoda",
+                              #rootfun = rootfun, events = list(func = eventfun, root = TRUE))
       # check for exponential growth
-      exp_Dem_norm <- expGrowth(outDem_norm)
+      exp_Dem_norm <- expGrowth(out)
+      #exp_Dem_norm <- expGrowth(outDem_norm)
       # count up extinctions and persistances
-      extPers <- sumExtPer(out = outDem_norm, expGrowth = exp_Dem_norm, n_spp = n_spp)
+      extPers <- sumExtPer(out = out, expGrowth = exp_Dem_norm, n_spp = n_spp)
+      #extPers <- sumExtPer(out = outDem_norm, expGrowth = exp_Dem_norm, n_spp = n_spp)
       sum_Dem_persist_norm <- extPers[[1]]
       sum_Dem_extnct_norm <- extPers[[2]]
       # add time series to output list (NA if unbounded growth)
       run_list[[4]] <- NA
-      if(!exp_Dem_norm) {
-        run_list[[4]] <- outDem_norm}
+      #if(!exp_Dem_norm) {
+        #run_list[[4]] <- outDem_norm}
       
       
       # store normal results in a vector
@@ -158,36 +167,44 @@ for (i in 1:length_n_spp_vec) {
       
       
       # run ode solver for numerator model
-      outNum_unif <- odeSolve(y = n0, times = time.seq, func = NumeratorMut, parms = parms, method = "lsoda",
+      out <- odeSolve(y = n0, times = time.seq, func = NumeratorMut, parms = parms, method = "lsoda",
                               rootfun = rootfun, events = list(func = eventfun, root = TRUE))
+      #outNum_unif <- odeSolve(y = n0, times = time.seq, func = NumeratorMut, parms = parms, method = "lsoda",
+                              #rootfun = rootfun, events = list(func = eventfun, root = TRUE))
       # check for exponential growth
-      exp_Num_unif <- expGrowth(outNum_unif)
+      exp_Num_unif <- expGrowth(out)
+      #exp_Num_unif <- expGrowth(outNum_unif)
       # count up extinctions and persistances
-      extPers <- sumExtPer(out = outNum_unif, expGrowth = exp_Num_unif, n_spp = n_spp)
+      extPers <- sumExtPer(out = out, expGrowth = exp_Num_unif, n_spp = n_spp)
+      #extPers <- sumExtPer(out = outNum_unif, expGrowth = exp_Num_unif, n_spp = n_spp)
       sum_Num_persist_unif <- extPers[[1]]
       sum_Num_extnct_unif <- extPers[[2]]
       # add time series to output list (NA if unbounded growth)
       run_list[[6]] <- NA
-      if(!exp_Num_unif) {
-        run_list[[6]] <- outNum_unif}
+      #if(!exp_Num_unif) {
+        #run_list[[6]] <- outNum_unif}
 
       
       #========== denominator ==========
       
       
       # run ode solver for denominator model
-      outDem_unif <- odeSolve(y = n0, times = time.seq, func = DenominatorMut, parms = parms, method = "lsoda",
+      out <- odeSolve(y = n0, times = time.seq, func = DenominatorMut, parms = parms, method = "lsoda",
                               rootfun = rootfun, events = list(func = eventfun, root = TRUE))
+      #outDem_unif <- odeSolve(y = n0, times = time.seq, func = DenominatorMut, parms = parms, method = "lsoda",
+                              #rootfun = rootfun, events = list(func = eventfun, root = TRUE))
       # check for exponential growth
-      exp_Dem_unif <- expGrowth(outDem_unif)
+      exp_Dem_unif <- expGrowth(out)
+      #exp_Dem_unif <- expGrowth(outDem_unif)
       # count up extinctions and persistances
-      extPers <- sumExtPer(out = outDem_unif, expGrowth = exp_Dem_unif, n_spp = n_spp)
+      extPers <- sumExtPer(out = out, expGrowth = exp_Dem_unif, n_spp = n_spp)
+      #extPers <- sumExtPer(out = outDem_unif, expGrowth = exp_Dem_unif, n_spp = n_spp)
       sum_Dem_persist_unif <- extPers[[1]]
       sum_Dem_extnct_unif <- extPers[[2]]
       # add time series to output list (NA if unbounded growth)
       run_list[[7]] <- NA
-      if(!exp_Dem_unif) {
-        run_list[[7]] <- outDem_unif}
+      #if(!exp_Dem_unif) {
+        #run_list[[7]] <- outDem_unif}
 
 
       # store uniform results in a vector
@@ -211,7 +228,7 @@ for (i in 1:length_n_spp_vec) {
       
       # save all info to a file
       file_name <- paste0(n_spp, "spp_", sprintf(x = disp_val, fmt = "%.3f"), "disp_", iter, "iter")
-      save(x = run_list, file = paste0(save_dir, "/", file_name, ".Rda"))
+      saveRDS(object = run_list, file = paste0(save_dir, "/", file_name, ".Rda"))
       
     } # end k iteraction
   }   # end j dispersion value
@@ -223,12 +240,14 @@ end_run-start_run
 # Data Compilation
 Here, we compile the data from the runs (run_list[[8]], the dataframe with final results) into one dataframe
 ```{r data comp}
-dir <- save_dir
+#dir <- save_dir
+dir <- "/Users/tarynwaite/Desktop/Mutualism project/LogisticMutualism/testData"
 runs <- list.files(dir)
 
 rdf <- data.frame()
 for (run in runs){
   dirSave <- paste0(dir, "/", run)
+  #run_list <- readRDS(dirSave)
   load(dirSave)
   
   disp_vec <- rep(x = run_list[[1]]$vals[2], times = 4)
@@ -236,12 +255,12 @@ for (run in runs){
   iter_vec <- rep(x = run_list[[1]]$vals[4], times = 4)
   
   run_list_temp <- cbind(run_list[[8]], disp_vec, n_spp_vec, iter_vec)
+  #run_list_temp <- cbind(run_list[[10]], disp_vec, n_spp_vec, iter_vec)
   rdf <- rbind(rdf, run_list_temp)
 }
 
 # save data 
-save(rdf, file = "outData.RData")
+saveRDS(rdf, file = "outData.RData")
 ```
-
 
 
