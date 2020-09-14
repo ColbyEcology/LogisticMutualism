@@ -10,10 +10,12 @@ output: html_document
 data <- readRDS("outData.RData")
 
 library(tidyverse)
+library(colorspace)
 ```
 
-```{r}
-# convert columns to numeric and add a proportion persist column
+Creating some modified dataframes with information about persistance and exponential growth
+```{r data wrangling}
+# convert some column types and add a proportion persist column
 data2 <- data %>% 
   mutate(S_persist = as.numeric(paste(S_persist)), S_extinct = as.numeric(paste(S_extinct)),
          prop_persist = as.numeric(paste(S_persist))/n_spp_vec,
@@ -23,14 +25,56 @@ data2 <- data %>%
 persistance_data <- data2 %>% 
   drop_na() %>% 
   group_by(NumODem, n_spp_vec, disp_vec) %>% 
-  summarize(mean_prop_persist = mean(prop_persist), na.omit = T)
+  summarize(mean_prop_persist = mean(prop_persist, na.omit = T))
+
+# with distributions separated 
+persistance_data2 <- data2 %>% 
+  drop_na() %>% 
+  group_by(NumODem, n_spp_vec, disp_vec, Distribution) %>% 
+  summarize(mean_prop_persist = mean(prop_persist, na.omit = T))
+
+persistance_spread <- data2 %>% 
+  drop_na() %>% 
+  group_by(NumODem, n_spp_vec, disp_vec) %>% 
+  summarize(mean_prop_persist = mean(prop_persist, na.omit = T)) %>% 
+  tidyr::spread(key = NumODem, value = mean_prop_persist) %>% 
+  rename(num_prop_persist = Num, dem_prop_persist = Dem)
+
+# with distributions separated
+persistance_spread2 <- data2 %>% 
+  drop_na() %>% 
+  group_by(NumODem, n_spp_vec, disp_vec, Distribution) %>% 
+  summarize(mean_prop_persist = mean(prop_persist, na.omit = T)) %>% 
+  tidyr::spread(key = NumODem, value = mean_prop_persist) %>% 
+  rename(num_prop_persist = Num, dem_prop_persist = Dem)
+
 
 # exp growth data grouped by model type, #species, dispersion
 exp_growth_data <- data2 %>% 
   group_by(NumODem, n_spp_vec, disp_vec) %>% 
   summarize(prop_exp_growth = sum(Exp_growth)/n())
+
+exp_growth_data2 <- data2 %>% 
+  group_by(NumODem, n_spp_vec, disp_vec, Distribution) %>% 
+  summarize(prop_exp_growth = sum(Exp_growth)/n())
+
+exp_growth_spread <- data2 %>% 
+  group_by(NumODem, n_spp_vec, disp_vec) %>% 
+  summarize(prop_exp_growth = sum(Exp_growth)/n()) %>% 
+  tidyr::spread(key = NumODem, value = prop_exp_growth) %>% 
+  rename(num_prop_exp = Num, dem_prop_exp = Dem)
+
+# with distributions separated
+exp_growth_spread2 <- data2 %>% 
+  group_by(NumODem, n_spp_vec, disp_vec, Distribution) %>% 
+  summarize(prop_exp_growth = sum(Exp_growth)/n()) %>% 
+  tidyr::spread(key = NumODem, value = prop_exp_growth) %>% 
+  rename(num_prop_exp = Num, dem_prop_exp = Dem)
+
+
 ```
 
+Heatmaps showing proportion persisted by number of species and dispersion (one for each model type) -- note, runs with exponential growth cannot be included (these are the blank regions in the upper right)
 ```{r proportion persisted}
 # heatmaps of proportion persisted by number of species and dispersion
 persistance_data %>% 
@@ -43,8 +87,34 @@ persistance_data %>%
   ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), fill = mean_prop_persist)) +
   geom_tile()
 
-```
+# difference between models
+persistance_spread %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), 
+             fill = num_prop_persist - dem_prop_persist)) +
+  geom_tile() +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0, 
+                                   name = "Difference in \nProportion Species Persisting \n(Numerator - Denominator)")
 
+# difference between models, just uniform
+persistance_spread2 %>%
+  filter(Distribution == "unif") %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), 
+             fill = num_prop_persist - dem_prop_persist)) +
+  geom_tile() +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0, 
+                                   name = "Difference in \nProportion Species Persisting \n(Numerator - Denominator)")
+
+# difference between models, just normal
+persistance_spread2 %>%
+  filter(Distribution == "norm") %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), 
+             fill = num_prop_persist - dem_prop_persist)) +
+  geom_tile() +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0, 
+                                   name = "Difference in \nProportion Species Persisting \n(Numerator - Denominator)")
+
+```
+Heatmaps showing proportion exponential growth by number of species and dispersion (one for each model type)
 ```{r proportion exponential growth}
 # heatmaps of proportion exp.growth by number of species and dispersion
 exp_growth_data %>% 
@@ -56,5 +126,35 @@ exp_growth_data %>%
   filter(NumODem == "Dem") %>% 
   ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), fill = prop_exp_growth)) +
   geom_tile()
+
+# difference between models
+exp_growth_spread %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), 
+             fill = num_prop_exp - dem_prop_exp)) +
+  geom_tile() +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0, 
+                                   name = "Difference in \nProportion Exponential Growth \n(Numerator - Denominator)")
+
+# just uniform
+exp_growth_spread2 %>% 
+  filter(Distribution == "unif") %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), 
+             fill = num_prop_exp - dem_prop_exp)) +
+  geom_tile() +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0, 
+                                   name = "Difference in \nProportion Exponential Growth \n(Numerator - Denominator)")
+
+# just normal
+exp_growth_spread2 %>% 
+  filter(Distribution == "norm") %>% 
+  ggplot(aes(x = as.factor(n_spp_vec), y = as.factor(disp_vec), 
+             fill = num_prop_exp - dem_prop_exp)) +
+  geom_tile() +
+  scale_fill_continuous_divergingx(palette = 'RdBu', mid = 0, 
+                                   name = "Difference in \nProportion Exponential Growth \n(Numerator - Denominator)")
+```
+
+```{r}
+
 ```
 
